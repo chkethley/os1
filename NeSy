@@ -1,0 +1,400 @@
+Import abc
+import numpy as np
+import json # For simple state serialization
+
+print("--- Defining NeSy Unit Interfaces (Abstract Base Classes) ---")
+
+class IComputationStrategy(abc.ABC):
+    """Interface for the unit's core computation logic."""
+    @abc.abstractmethod
+    def compute(self, inputs, neural_state, symbolic_state, **kwargs):
+        pass
+
+class ILearningStrategy(abc.ABC):
+    """Interface for how the unit updates its state (learns)."""
+    @abc.abstractmethod
+    def update_state(self, feedback_info, neural_state, symbolic_state, **kwargs):
+        pass
+
+class ICommunicationProtocol(abc.ABC):
+    """Interface for unit-to-unit or unit-to-external communication."""
+    @abc.abstractmethod
+    def send_message(self, target_unit_id, message_payload, **kwargs):
+        pass
+
+    @abc.abstractmethod
+    def receive_message(self, message, **kwargs):
+        # Note: In non-actor models, this might be less used,
+        # as calls often happen via direct method invocation.
+        pass
+
+class IStateManagement(abc.ABC):
+    """Interface for saving and loading the unit's state."""
+    @abc.abstractmethod
+    def get_state_snapshot(self, unit_id, unit_type, neural_state, symbolic_state, configuration):
+        pass
+
+    @abc.abstractmethod
+    def restore_state(self, state_snapshot):
+        # Returns a dictionary with state components to be loaded
+        pass
+
+print("--- Defining Concrete Strategy Implementations ---")
+
+# --- 1. Concrete Computation Strategy ---
+class SimpleHybridComputation(IComputationStrategy):
+    """A basic example combining neural and symbolic aspects."""
+    def compute(self, inputs, neural_state, symbolic_state, **kwargs):
+        print(f"Unit {kwargs.get('unit_id', '?')} Computing:")
+        # Neural part: Simple activation based on weights
+        output = None
+        weights = neural_state.get('weights')
+        bias = neural_state.get('bias', 0)
+        if weights is not None and inputs is not None:
+            try:
+                # Ensure inputs are compatible with weights
+                if not isinstance(inputs, np.ndarray):
+                    inputs = np.array(inputs)
+                if inputs.shape[0] != weights.shape[0]:
+                     print(f"  Warning: Input shape {inputs.shape} incompatible with weight shape {weights.shape}. Skipping neural part.")
+                else:
+                    activation = np.dot(inputs, weights) + bias
+                    output = 1 / (1 + np.exp(-activation)) # Sigmoid
+                    neural_state['last_activation'] = output
+                    print(f"  Neural computation performed. Activation: {output}")
+            except Exception as e:
+                print(f"  Error during neural computation: {e}")
+
+
+        # Symbolic part: Check if a specific fact exists
+        required_fact = kwargs.get('required_fact')
+        facts = symbolic_state.get('facts', set())
+        symbolic_check_passed = False
+        if required_fact:
+            if required_fact in facts:
+                symbolic_check_passed = True
+                print(f"  Symbolic check passed: Fact '{required_fact}' found.")
+            else:
+                symbolic_check_passed = False
+                print(f"  Symbolic check failed: Fact '{required_fact}' not found.")
+        else:
+            symbolic_check_passed = True # No specific fact required
+            print("  No specific symbolic fact check required.")
+
+        # Combine results (example: only return neural output if symbolic check passes)
+        if symbolic_check_passed:
+            return output
+        else:
+            # Optionally return a specific value indicating symbolic failure
+            return "SYMBOLIC_CONSTRAINT_FAILED"
+
+
+# --- 2. Concrete Learning Strategy ---
+class SimpleGradientAndFactUpdate(ILearningStrategy):
+    """Updates weights based on 'gradients' and adds facts based on 'symbolic_feedback'."""
+    def update_state(self, feedback_info, neural_state, symbolic_state, **kwargs):
+        unit_id = kwargs.get('unit_id', '?')
+        print(f"Unit {unit_id} Updating State:")
+
+        # Neural update part (simple gradient descent placeholder)
+        gradients = feedback_info.get('gradients')
+        learning_rate = feedback_info.get('learning_rate', 0.01)
+        weights = neural_state.get('weights')
+        if gradients is not None and weights is not None:
+            try:
+                 # Ensure gradients are compatible
+                 if not isinstance(gradients, np.ndarray):
+                     gradients = np.array(gradients)
+                 if gradients.shape == weights.shape:
+                    neural_state['weights'] -= learning_rate * gradients
+                    print(f"  Neural weights updated using gradients.")
+                 else:
+                     print(f"  Warning: Gradient shape {gradients.shape} incompatible with weight shape {weights.shape}. Skipping weight update.")
+            except Exception as e:
+                print(f"  Error during neural state update: {e}")
+
+
+        # Symbolic update part
+        symbolic_feedback = feedback_info.get('symbolic_feedback')
+        if symbolic_feedback:
+            new_fact = symbolic_feedback.get('add_fact')
+            remove_fact = symbolic_feedback.get('remove_fact')
+            facts = symbolic_state.setdefault('facts', set())
+            if new_fact:
+                facts.add(new_fact)
+                print(f"  Symbolic state updated: Added fact '{new_fact}'.")
+            if remove_fact and remove_fact in facts:
+                 facts.remove(remove_fact)
+                 print(f"  Symbolic state updated: Removed fact '{remove_fact}'.")
+
+
+# --- 3. Concrete Communication Protocol ---
+class PrintBasedCommunication(ICommunicationProtocol):
+    """Simulates communication by printing messages."""
+    def send_message(self, target_unit_id, message_payload, **kwargs):
+        sender_id = kwargs.get('sender_id', 'Unknown')
+        print(f"COMM: Unit '{sender_id}' sending to Unit '{target_unit_id}': {message_payload}")
+        # In a real system, this would involve network calls, actor messages, etc.
+
+    def receive_message(self, message, **kwargs):
+        unit_id = kwargs.get('unit_id', '?')
+        print(f"COMM: Unit '{unit_id}' received message internally: {message}")
+        # This method might trigger other actions within the unit upon receiving a message.
+        # For this prototype, it just prints.
+        pass
+
+
+# --- 4. Concrete State Management ---
+class JsonFileStateManagement(IStateManagement):
+    """Saves/loads state to/from a JSON file."""
+
+    def _serialize_state(self, state_dict):
+        """Helper to make state JSON serializable (handles numpy arrays)."""
+        serializable_dict = {}
+        for k, v in state_dict.items():
+            if isinstance(v, np.ndarray):
+                serializable_dict[k] = v.tolist() # Convert numpy arrays to lists
+            elif isinstance(v, set):
+                 serializable_dict[k] = list(v) # Convert sets to lists
+            else:
+                 serializable_dict[k] = v
+        return serializable_dict
+
+    def _deserialize_state(self, loaded_dict):
+        """Helper to restore specific types (e.g., numpy arrays) if needed."""
+        restored_dict = {}
+        for k, v in loaded_dict.items():
+            # Simple example: if key suggests it was numpy, convert back
+            # A more robust solution might store type info during serialization
+            if 'weights' in k or 'bias' in k or 'activation' in k:
+                 try:
+                     restored_dict[k] = np.array(v)
+                 except Exception:
+                     restored_dict[k] = v # Fallback if conversion fails
+            elif k == 'facts': # Assuming 'facts' should be a set
+                restored_dict[k] = set(v)
+            else:
+                 restored_dict[k] = v
+        return restored_dict
+
+
+    def get_state_snapshot(self, unit_id, unit_type, neural_state, symbolic_state, configuration):
+        print(f"STATE: Getting snapshot for Unit '{unit_id}'")
+        snapshot = {
+            'unit_id': unit_id,
+            'unit_type': unit_type,
+            'neural_state': self._serialize_state(neural_state),
+            'symbolic_state': self._serialize_state(symbolic_state),
+            'configuration': self._serialize_state(configuration) # Config might also need serialization
+        }
+        # Save to file
+        filename = f"nesy_unit_{unit_id}_state.json"
+        try:
+            with open(filename, 'w') as f:
+                json.dump(snapshot, f, indent=4)
+            print(f"  State saved to {filename}")
+        except Exception as e:
+            print(f"  Error saving state to {filename}: {e}")
+        return snapshot # Return the snapshot dict as well
+
+    def restore_state(self, state_snapshot):
+         # If state_snapshot is a filename string:
+        if isinstance(state_snapshot, str):
+            filename = state_snapshot
+            print(f"STATE: Restoring state from file '{filename}'")
+            try:
+                with open(filename, 'r') as f:
+                    loaded_snapshot = json.load(f)
+            except FileNotFoundError:
+                 print(f"  Error: State file '{filename}' not found.")
+                 return None
+            except json.JSONDecodeError:
+                 print(f"  Error: Could not decode JSON from '{filename}'.")
+                 return None
+            except Exception as e:
+                 print(f"  Error loading state from {filename}: {e}")
+                 return None
+        # If state_snapshot is already a dictionary
+        elif isinstance(state_snapshot, dict):
+             print(f"STATE: Restoring state from provided dictionary snapshot.")
+             loaded_snapshot = state_snapshot
+        else:
+            print("STATE: Error - restore_state expects filename string or state dictionary.")
+            return None
+
+        # Deserialize components
+        restored_data = {
+             'unit_id': loaded_snapshot.get('unit_id'),
+             'unit_type': loaded_snapshot.get('unit_type'),
+            'neural_state': self._deserialize_state(loaded_snapshot.get('neural_state', {})),
+            'symbolic_state': self._deserialize_state(loaded_snapshot.get('symbolic_state', {})),
+            'configuration': self._deserialize_state(loaded_snapshot.get('configuration', {}))
+        }
+        print(f"  State restored for Unit '{restored_data.get('unit_id', '?')}'")
+        return restored_data
+
+
+print("--- Defining the Core NeSy Unit Class ---")
+
+class NeSyUnit:
+    """
+    The core NeSy Unit, composed of various strategy components.
+    Based on the design from the research document.
+    """
+    def __init__(self,
+                 unit_id: str,
+                 unit_type: str,
+                 computation_strategy: IComputationStrategy,
+                 learning_strategy: ILearningStrategy,
+                 communication_protocol: ICommunicationProtocol,
+                 state_manager: IStateManagement,
+                 initial_neural_state: dict = None,
+                 initial_symbolic_state: dict = None,
+                 configuration: dict = None):
+
+        self.unit_id = unit_id
+        self.unit_type = unit_type
+
+        # --- Core State ---
+        self.neural_state = initial_neural_state if initial_neural_state is not None else {}
+        self.symbolic_state = initial_symbolic_state if initial_symbolic_state is not None else {}
+        self.configuration = configuration if configuration is not None else {}
+        print(f"Unit '{self.unit_id}' ({self.unit_type}) Initialized.")
+        print(f"  Initial Neural State: {self.neural_state}")
+        print(f"  Initial Symbolic State: {self.symbolic_state}")
+
+        # --- Injected Strategy Components (Composition) ---
+        self._computation_strategy = computation_strategy
+        self._learning_strategy = learning_strategy
+        self._communication_protocol = communication_protocol
+        self._state_manager = state_manager
+
+    # --- Delegate methods to strategies ---
+    def compute(self, inputs, **kwargs):
+        """Delegates computation to the configured strategy."""
+        # Pass unit_id for context/logging if needed by strategy
+        return self._computation_strategy.compute(
+            inputs, self.neural_state, self.symbolic_state, unit_id=self.unit_id, **kwargs
+        )
+
+    def update_state(self, feedback_info, **kwargs):
+        """Delegates state update/learning to the configured strategy."""
+        self._learning_strategy.update_state(
+            feedback_info, self.neural_state, self.symbolic_state, unit_id=self.unit_id, **kwargs
+        )
+
+    def send_message(self, target_unit_id, message_payload):
+        """Delegates sending messages to the communication strategy."""
+        self._communication_protocol.send_message(
+            target_unit_id, message_payload, sender_id=self.unit_id
+        )
+
+    def receive_message(self, message):
+         """Delegates handling received messages (less common without actors)."""
+         # Pass unit_id for context if needed by strategy
+         self._communication_protocol.receive_message(message, unit_id=self.unit_id)
+
+    def save_state(self):
+        """Saves the unit's current state using the state manager."""
+        self._state_manager.get_state_snapshot(
+            self.unit_id, self.unit_type, self.neural_state, self.symbolic_state, self.configuration
+        )
+
+    def load_state(self, state_source):
+        """Loads state using the state manager. state_source can be filename or dict."""
+        restored_data = self._state_manager.restore_state(state_source)
+        if restored_data:
+            # Only update if restoration was successful and IDs match (optional check)
+             if restored_data.get('unit_id') == self.unit_id:
+                self.neural_state = restored_data.get('neural_state', {})
+                self.symbolic_state = restored_data.get('symbolic_state', {})
+                self.configuration = restored_data.get('configuration', {})
+                self.unit_type = restored_data.get('unit_type', self.unit_type) # Optionally update type too
+                print(f"Unit '{self.unit_id}' state successfully loaded.")
+             else:
+                  print(f"Warning: Loaded state ID '{restored_data.get('unit_id')}' does not match unit ID '{self.unit_id}'. State not loaded.")
+        else:
+             print(f"Unit '{self.unit_id}' state loading failed.")
+
+
+print("\n--- Prototype Usage Example ---")
+
+# 1. Instantiate concrete strategies
+comp_strategy = SimpleHybridComputation()
+learn_strategy = SimpleGradientAndFactUpdate()
+comm_protocol = PrintBasedCommunication()
+state_manager = JsonFileStateManagement()
+
+# 2. Define initial state and config
+input_size = 3
+output_size = 1
+initial_weights = np.random.rand(input_size, output_size) * 0.1 # Small random weights
+initial_bias = np.zeros(output_size)
+initial_facts = {'is_active', 'has_permission'}
+
+unit1_neural_state = {'weights': initial_weights, 'bias': initial_bias}
+unit1_symbolic_state = {'facts': initial_facts}
+unit1_config = {'some_parameter': 123}
+
+# 3. Instantiate the NeSy Unit
+unit1 = NeSyUnit(
+    unit_id="Unit_Alpha",
+    unit_type="HybridProcessor",
+    computation_strategy=comp_strategy,
+    learning_strategy=learn_strategy,
+    communication_protocol=comm_protocol,
+    state_manager=state_manager,
+    initial_neural_state=unit1_neural_state,
+    initial_symbolic_state=unit1_symbolic_state,
+    configuration=unit1_config
+)
+
+# 4. Use the unit
+print("\n--- Running Computations ---")
+inputs1 = np.random.rand(input_size)
+print(f"Input 1: {inputs1}")
+# Compute requiring a specific fact that exists
+output1 = unit1.compute(inputs1, required_fact='is_active')
+print(f"Output 1 (fact required and present): {output1}")
+
+inputs2 = np.random.rand(input_size)
+print(f"\nInput 2: {inputs2}")
+# Compute requiring a specific fact that DOES NOT exist
+output2 = unit1.compute(inputs2, required_fact='needs_approval')
+print(f"Output 2 (fact required but absent): {output2}")
+
+
+print("\n--- Running State Updates ---")
+# Simulate some feedback
+gradients_example = np.random.rand(input_size, output_size) * 0.01
+feedback = {
+    'gradients': gradients_example,
+    'learning_rate': 0.05,
+    'symbolic_feedback': {
+        'add_fact': 'computation_performed',
+        'remove_fact': 'is_active'
+    }
+}
+unit1.update_state(feedback)
+print(f"Unit '{unit1.unit_id}' Current Symbolic State after update: {unit1.symbolic_state}")
+
+
+print("\n--- Simulating Communication ---")
+unit1.send_message(target_unit_id="Unit_Beta", message_payload={'status': 'updated', 'activation': unit1.neural_state.get('last_activation')})
+unit1.receive_message({'command': 'reset_counter'}) # Example internal message trigger
+
+
+print("\n--- Testing State Management ---")
+# Save the current state
+unit1.save_state()
+
+# Modify the state in memory
+unit1.symbolic_state['facts'].add('MODIFIED_IN_MEMORY')
+print(f"Unit '{unit1.unit_id}' state modified in memory: {unit1.symbolic_state}")
+
+# Load the state back from the file
+unit1.load_state(f"nesy_unit_{unit1.unit_id}_state.json")
+print(f"Unit '{unit1.unit_id}' state after loading from file: {unit1.symbolic_state}")
+
+print("\n--- Prototype Execution Finished ---")
+

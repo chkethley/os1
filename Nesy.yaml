@@ -1,0 +1,94 @@
+# --- Metadata for NeSy Unit Framework Prototype ---
+
+projectName: NeSy Unit Framework Prototype
+version: 0.1.0
+description: |
+  A Python prototype demonstrating a modular framework for building
+  Neuro-Symbolic (NeSy) units. It utilizes the Strategy design pattern
+  to compose units from distinct components responsible for computation,
+  learning, communication, and state management. This allows for
+  flexibility in defining unit behavior by swapping different
+  strategy implementations.
+author: AI Assistant (Based on User Provided Code) # Or replace with actual author
+dateCreated: 2025-04-20 # Approximate date based on interaction
+lastModified: 2025-04-20
+license: Not Specified # No license provided in the original code
+
+programmingLanguage: Python
+pythonVersion: ">=3.7" # Assumed minimum compatibility due to ABCs, f-strings
+
+status: Prototype / Educational Example
+
+coreConcepts:
+  - Neuro-Symbolic AI (NeSy)
+  - Hybrid AI Systems
+  - Strategy Design Pattern
+  - Composition over Inheritance
+  - Modular Design
+  - Separation of Concerns
+  - State Management
+
+keywords:
+  - Neuro-Symbolic
+  - NeSy
+  - Hybrid AI
+  - Strategy Pattern
+  - Design Patterns
+  - AI Framework
+  - Modularity
+  - State Persistence
+  - JSON
+  - NumPy
+  - Python
+  - Artificial Intelligence
+  - Machine Learning
+  - Prototype
+
+dependencies:
+  standardLibrary:
+    - abc: Used for defining Abstract Base Classes (Interfaces).
+    - json: Used for serializing/deserializing state to/from files.
+  external:
+    - numpy: Used for numerical operations, particularly weights and inputs in the neural components. # Specify version if known, e.g., numpy>=1.18
+
+components:
+  interfaces:
+    - IComputationStrategy: Defines the computation logic contract.
+    - ILearningStrategy: Defines the state update (learning) logic contract.
+    - ICommunicationProtocol: Defines the communication (sending/receiving messages) contract.
+    - IStateManagement: Defines the state saving/loading contract.
+  concreteStrategies:
+    - SimpleHybridComputation: Example computation combining basic neural activation and symbolic fact checking.
+    - SimpleGradientAndFactUpdate: Example learning updating weights (simulated) and symbolic facts.
+    - PrintBasedCommunication: Simulation of communication via console output.
+    - JsonFileStateManagement: State persistence using JSON files, handling NumPy/set serialization.
+  coreClass:
+    - NeSyUnit: The central unit orchestrator, composed of strategy instances. Manages neural/symbolic state and configuration.
+
+usage:
+  summary: Execute the Python script directly.
+  details: |
+    The script defines all necessary interfaces and classes, then proceeds
+    to an example section (`--- Prototype Usage Example ---`). This section
+    demonstrates:
+    1. Instantiating concrete strategies.
+    2. Defining initial neural and symbolic states.
+    3. Creating a `NeSyUnit` instance.
+    4. Performing computations (`.compute()`) under different symbolic conditions.
+    5. Updating the unit's state (`.update_state()`) based on simulated feedback.
+    6. Simulating message passing (`.send_message()`, `.receive_message()`).
+    7. Saving the unit's state to a JSON file (`.save_state()`).
+    8. Loading the state back from the file (`.load_state()`).
+  output:
+    - Console logs showing the steps being executed within the strategies.
+    - A JSON file (e.g., `nesy_unit_Unit_Alpha_state.json`) containing the saved state of the example unit.
+
+potentialEnhancements:
+  - More sophisticated computation/learning strategies.
+  - Actual network/inter-process communication implementation.
+  - More robust error handling.
+  - Advanced serialization (e.g., using Pickle, or storing type information for deserialization).
+  - Integration into a larger NeSy system or simulation environment.
+  - Formal unit testing.
+
+# --- End of Metadata ---
